@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nanonis_spm"
+version = "0.0.5"
+authors = [
+  { name="Samuel O'Neill", email="samuel.oneill@specs-zurich.com" },
+]
+description = "Python package for controlling Nanonis SPM software through python"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
