@@ -1,0 +1,7 @@
+ * Copyright (C) 2023 SPECS ZURICH - support@specs-zurich.com>
+ *
+ * This file is part of Nanonis Mimea software package.
+ *
+ * The nanonis_spm_specs_zurich python package can not be copied and/or distributed without the
+ * permission of Specs Zurich. Project is based on Markus A. Huber's work.
+
