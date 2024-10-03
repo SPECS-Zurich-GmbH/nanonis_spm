@@ -16,7 +16,9 @@ import nanonis_spm
 ### Initializing Connection through the socket module
 
 import socket
+
 connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
 connection.connect((IP_ADRESS_HERE, PORT_HERE))
 
 nanonisInstance = nanonis_spm.Nanonis(connection)
