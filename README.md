@@ -13,9 +13,13 @@ said software through python commands.
 
 import nanonis_spm
 
-### Initializing Connection
+### Initializing Connection through the socket module
 
-nanonisInstance = nanonis_spm.Nanonis(PORT_HERE, IP_ADRESS_HERE)
+import socket
+connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+connection.connect((IP_ADRESS_HERE, PORT_HERE))
+
+nanonisInstance = nanonis_spm.Nanonis(connection)
 
 NOTE : THE PORT HAS TO BE AN INTEGER AND THE IP ADRESS A STRING
 
@@ -29,11 +33,9 @@ nanonisInstance.returnDebugInfo(1)
 
 ### Examples
 
-nanonisInstance.BiasSpectr_Open() --> Opens Bias Spectroscopy Module.
+There is a collection of examples installed with the package.
 
-Funtion Documentations can be found by either hovering over the function names
-or in the TCP Protocol Document, which is also where all the available functions
-are listed.x
+The description of all the available functions can be found in the TCP Protocol Document, and hovering on the function depending on the used IDE.
 
 IMPORTANT:
 The TCP Interface requires every argument to be of certain size (see documentation).
@@ -45,9 +47,5 @@ Example:
 nanonisInstance.BiasSwp_LimitsSet(np.float32(1), np.float32(2))
 
 We hereby ensure that the arguments are of the correct size.
-Strings are to be input normally as such:
-
-nanonisInstance.HSSwp_SaveBasenameSet("test")
-
 
 
