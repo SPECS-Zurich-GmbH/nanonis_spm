@@ -4,11 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nanonis_spm"
-version = "0.0.5"
+version = "1.0.0"
 authors = [
   { name="Samuel O'Neill", email="samuel.oneill@specs-zurich.com" },
+  { name="Aitziber Herrero", email="aitziber.herrero@specs-zurich.com" }
 ]
-description = "Python package for controlling Nanonis SPM software through python"
+description = "Python package for controlling Nanonis SPM software through Python"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
