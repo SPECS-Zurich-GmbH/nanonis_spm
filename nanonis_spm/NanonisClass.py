@@ -40,7 +40,7 @@ class Nanonis:
         BodyPart = BodyPart + struct.pack('>' + BodyType, BodyElement)
         return BodyPart
 
-    # Handles parsing of arrays form Client to Server (w. length prepended)
+    # Handles parsing of arrays from Client to Server (w. length prepended)
     def handleArrayPrepend(self, Array, BodyType, BodyPart):
         arrayLength = len(Array)
 
@@ -56,20 +56,36 @@ class Nanonis:
 
         return BodyPart
 
+    #Handles parsing of strings arrays from Client to Server (w. length prepended)
+    def handleArrayString(self, Array, BodyType, BodyPart):
+        arrayLength = len(Array)
+        nrbytes=4*arrayLength
+        BodyPart = BodyPart + struct.pack('>i', nrbytes)
+        BodyPart = BodyPart + struct.pack('>i', arrayLength)
+        for i in range(0, arrayLength):
+            Entry = self.handleString(Array[i],BodyType,bytearray())
+            BodyType = str(len(Entry)) + 's'
+            BodyPart = BodyPart + (struct.pack('>' + BodyType, Entry))  
+        return BodyPart
+
+    #Handles parsing of 2D arrays of floats
+    def handle2DArray(self, Array, BodyType, BodyPart):
+        arrayRows = len(Array) #number of rows
+        BodyPart = BodyPart + struct.pack('>i', arrayRows)
+        arrayColumns=len(Array[0]) #number of columns
+        BodyPart = BodyPart + struct.pack('>i', arrayColumns)
+        for i in range(0, arrayRows):
+            for j in range(0, arrayColumns):
+                Entry = float(Array[i][j])
+                BodyPart = BodyPart + (struct.pack('>' + BodyType[1], Entry))
+        return BodyPart
+
     # Handles parsing of arrays form Client to Server
     def handleArray(self, Array, BodyType, BodyPart):
         arrayLength = len(Array)
-
         for i in range(0, arrayLength):
-            if BodyType[2] == "c":
-                Entry = bytes(str(Array[i]), "utf-8")
-                #print(Entry)
-            else:
-                Entry = Array[i]
-
-            #print(BodyType[2])
-            BodyPart = BodyPart + (struct.pack('>' + BodyType[2], Entry))  # CANT HAVE X OR W IN THERE
-
+            Entry = Array[i]
+            BodyPart = BodyPart + (struct.pack('>' + BodyType[1], Entry))  
         return BodyPart
 
     def correctType(self, BodyType, Body):
@@ -96,7 +112,12 @@ class Nanonis:
                 instance = Body[i]
                 type = BodyType[i]
                 if "c" in BodyType[i]:
-                    BodyPart = self.handleString(Body[i], BodyType[i], BodyPart)
+                    if isinstance(Body[i], str)==True:
+                        #Array of chars (i.e. string)
+                        BodyPart = self.handleString(Body[i], BodyType[i], BodyPart)
+                    else:
+                        #array of strings
+                        BodyPart = self.handleArrayString(Body[i], BodyType[i], BodyPart)
                 elif "-" in BodyType[i]:
                     for j in range(0, len(Body[i])):
                         instance[j] = self.correctType(type[2], instance[j])
@@ -107,9 +128,14 @@ class Nanonis:
                         instance[j] = self.correctType(type[2], instance[j])
                         Body[i] = instance
                     BodyPart = self.handleArrayPrepend(Body[i], BodyType[i], BodyPart)
+                else:
+                    BodyPart = self.handleArray(Body[i], BodyType[i], BodyPart) 
             else:
-                Body[i] = self.correctType(BodyType[i], Body[i])
-                BodyPart = BodyPart + struct.pack('>' + BodyType[i], Body[i])
+                if "2" in BodyType[i]:
+                    BodyPart = self.handle2DArray(Body[i], BodyType[i], BodyPart)
+                else:
+                    Body[i] = self.correctType(BodyType[i], Body[i])
+                    BodyPart = BodyPart + struct.pack('>' + BodyType[i], Body[i])
 
         SendResponseBack = True
 
@@ -258,15 +284,20 @@ class Nanonis:
                     counter = counter + NoOfChars
                     Variables.append(String)
                 elif ResponseType[1] == '*':
-                    if universalLength == 0:
-                        universalLength = Variables[-1]
-                    Result = self.decodeArray(Response, counter, universalLength, ResponseType[2])  # Nano
-                    # print(ResponseType, ' : ', Result)
-                    counter = counter + (universalLength * 4)
+                    #if universalLength == 0:
+                    #    universalLength = Variables[-1]
+                    universalLength = Variables[0]
+                    if ResponseType[2] == 'c':
+                        Result = self.decodeStringPrepended(Response, counter, universalLength)
+                        counter = counter + universalLength
+                    else:
+                        Result = self.decodeArray(Response, counter, universalLength, ResponseType[2])  # Nano
+                        # print(ResponseType, ' : ', Result)
+                        counter = counter + (universalLength * 4)
                     Variables.append(Result)
                 else:  # ResponseType[1] == 'w':
                     Result = self.decodeArrayPrepended(Response, counter, Variables[-1], ResponseType[1])# Nano
-                    if(ResponseType[1]=='d'):
+                    if (ResponseType[1]=='d'):
                         increment = 8
                     else:
                         increment = 4
@@ -327,7 +358,7 @@ class Nanonis:
 
             UNIQUE FOR RETURN TYPES:
 
-            "**" Identifier for arrays that get returned without length prepended
+            "**" Identifier for arrays whose size is defined by the first returned argument
 
         '''
 
@@ -435,7 +466,7 @@ class Nanonis:
 
     def Bias_Pulse(self, Wait_until_done: np.uint32, Bias_pulse_width_s: np.float32, Bias_value_V: np.float32,
                    Z_Controller_on_hold: np.uint32,
-                   Pulse_absolutedivrelative: np.uint16):
+                   Pulse_absolute_relative: np.uint16):
         """
         Bias.Pulse
         Generates one bias pulse.
@@ -454,7 +485,7 @@ class Nanonis:
         """
 
         return self.quickSend("Bias.Pulse", [Wait_until_done, Bias_pulse_width_s, Bias_value_V, Z_Controller_on_hold,
-                                             Pulse_absolutedivrelative], ["I", "f", "f", "H", "H"], [])
+                                             Pulse_absolute_relative], ["I", "f", "f", "H", "H"], [])
 
     def BiasSwp_Open(self):
         """
@@ -469,7 +500,7 @@ class Nanonis:
         return self.quickSend("BiasSwp.Open", [], [], [])
 
     def BiasSwp_Start(self, Get_data: np.uint32, Sweep_direction: np.uint32, Z_Controller_status: np.uint32,
-                      Save_base_name_string_size: int, Save_base_name: str,
+                      Save_base_name: str,
                       Reset_bias: np.uint32):
         """
         BiasSwp.Start
@@ -496,8 +527,8 @@ class Nanonis:
         """
 
         return self.quickSend("BiasSwp.Start",
-                              [Get_data, Sweep_direction, Z_Controller_status, Save_base_name_string_size,
-                               Save_base_name, Reset_bias], ["I", "I", "I", "i", "+*c", "I"],
+                              [Get_data, Sweep_direction, Z_Controller_status,
+                               Save_base_name, Reset_bias], ["I", "I", "I", "+*c", "I"],
                               ["i", "i", "*+c", "i", "i", "2f"])
 
     def BiasSwp_PropsSet(self, Number_of_steps: np.uint16, Period_ms: np.uint16, Autosave: np.uint16,
@@ -627,10 +658,12 @@ class Nanonis:
         -- Number of channels (int) is the number of recorded channels. It defines the size of the Channel indexes array
         -- Channel indexes (1D array int) are the indexes of recorded channels. The indexes are comprised between 0 and 23 for the 24 signals assigned in the Signals Manager.
         To get the signal name and its corresponding index in the list of the 128 available signals in the Nanonis Controller, use the <i>Signals.InSlotsGet</i> function
+        - Channels size (int) is the size in bytes of the Channels string array
+        - Channels (1D array string) returns the names of the acquired channels in the sweep. The size of each string item comes right before it as integer 32
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("BiasSpectr.ChsGet", [], [], ["i", "*i"])
+        return self.quickSend("BiasSpectr.ChsGet", [], [], ["i", "*i", "i", "**c"])
 
     def BiasSpectr_PropsSet(self, Save_all: np.uint16, Number_of_sweeps: int, Backward_sweep: np.uint16,
                             Number_of_points: int, Z_offset_m: np.float32, Autosave: np.uint16,
@@ -800,14 +833,42 @@ class Nanonis:
         """
         return self.quickSend("BiasSpectr.TimingGet", [], [], ["f", "f", "f", "f", "f", "f", "f", "f"])
 
-    def BiasSpectr_TTLSyncSet(self, Enable: np.uint16, TTL_line: np.uint16, TTL_polarity: np.uint16,
+    def BiasSpectr_DigSyncSet(self, Digital_Sync: np.uint16):
+        """
+        BiasSpectr.DigSyncSet
+        Returns the configured TTL/pulse sequence synchronization option in the Advanced section of the Bias Spectroscopy module.
+        TTL synchronization allows for controlling one high-speed digital output according to the individual stages of the bias spectroscopy measurement.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed)synchronized with the individual stages of the bias spectroscopy measurement.
+        Arguments: 
+        - Digital Sync. (unsigned int16) where 0 means no change, 1 is Off, 2 is TTL Sync, and 3 is Pulse Sequence
+        Return arguments (if Send response back flag is set to True when sending request message):
+        - Error described in the Response message>Body section
+        """
+        return self.quickSend("BiasSpectr.DigSyncSet", [Digital_Sync],
+                              ["H"], [])
+
+    def BiasSpectr_DigSyncGet(self):
+        """
+        BiasSpectr.DigSyncGet
+        Returns the configured TTL/pulse sequence synchronization option in the Advanced section of the Bias Spectroscopy module.
+        TTL synchronization allows for controlling one high-speed digital output according to the individual stages of the bias spectroscopy measurement.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed)synchronized with the individual stages of the bias spectroscopy measurement.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Digital Sync. (unsigned int16) where 0 is Off, 1 is TTL Sync, and 2 is Pulse Sequence
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("BiasSpectr.DigSyncGet", [], [], ["H"])
+
+    def BiasSpectr_TTLSyncSet(self, TTL_line: np.uint16, TTL_polarity: np.uint16,
                               Time_to_on_s: np.float32, On_duration_s: np.float32):
         """
         BiasSpectr.TTLSyncSet
         Sets the configuration of the TTL Synchronization feature in the Advanced section of the Bias Spectroscopy module.
-        TTL synchronization allows for controlling the high-speed digital outs according to the individual stages of the bias spectroscopy measurement.
+        TTL synchronization allows for controlling one high-speed digital output according to the individual stages of the bias spectroscopy measurement.
         Arguments: 
-        -- Enable (unsigned int16) selects whether the feature is active or not. 0 means no change, 1 means On, and 2 means Off
         -- TTL line (unsigned int16) sets which digital line should be controlled. 0 means no change, 1 means HS Line 1, 2 means HS Line 2, 3 means HS Line 3, 4 means HS Line 4
         -- TTL polarity (unsigned int16) sets the polarity of the switching action. 0 means no change, 1 means Low Active, and 2 means High Active
         -- Time to on (s) (float32) defines the time to wait before activating the TTL line
@@ -819,18 +880,17 @@ class Nanonis:
         
         
         """
-        return self.quickSend("BiasSpectr.TTLSyncSet", [Enable, TTL_line, TTL_polarity, Time_to_on_s, On_duration_s],
-                              ["H", "H", "H", "f", "f"], [])
+        return self.quickSend("BiasSpectr.TTLSyncSet", [TTL_line, TTL_polarity, Time_to_on_s, On_duration_s],
+                              ["H", "H", "f", "f"], [])
 
     def BiasSpectr_TTLSyncGet(self):
         """
         BiasSpectr.TTLSyncGet
         Returns the configuration of the TTL Synchronization feature in the Advanced section of the Bias Spectroscopy module.
-        TTL synchronization allows for controlling the high-speed digital outs according to the individual stages of the bias spectroscopy measurement.
+        TTL synchronization allows for controlling  one high-speed digital output according to the individual stages of the bias spectroscopy measurement.
         Arguments: None
         Return arguments (if Send response back flag is set to True when sending request message):
         
-        -- Enable (unsigned int16) indicates whether the feature is active or not. 0 means Off, 1 means On
         -- TTL line (unsigned int16) indicates which digital line should be controlled. 0 means HS Line 1, 1 means HS Line 2, 2 means HS Line 3, 3 means HS Line 4
         -- TTL polarity (unsigned int16) indicates the polarity of the switching action. 0 means Low Active, 1 means High Active
         -- Time to on (s) (float32) indicates the time to wait before activating the TTL line
@@ -838,7 +898,39 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("BiasSpectr.TTLSyncGet", [], [], ["H", "H", "H", "f", "f"])
+        return self.quickSend("BiasSpectr.TTLSyncGet", [], [], ["H", "H", "f", "f"])
+
+    def BiasSpectr_PulseSeqSyncSet(self, Pulse_Sequence_Nr: np.uint16, Nr_Periods: np.uint32):
+        """
+        BiasSpectr.PulseSeqSyncSet
+        Sets the configuration of the pulse sequence synchronization feature in the Advanced section of the Bias Spectroscopy module.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed) synchronized with the individual stages of the bias spectroscopy measurement.
+        Arguments: 
+        - Pulse Sequence Nr. (unsigned int16) is the pulse sequence number as configured in the Pulse Generation module. 0 means no change
+        - Nr. Periods (unsigned int32) is the number of times the same pulse sequence is executed
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("BiasSpectr.PulseSeqSyncSet", [Pulse_Sequence_Nr, Nr_Periods],
+                              ["H", "I"], [])
+
+    def BiasSpectr_PulseSeqSyncGet(self):
+        """
+        BiasSpectr.PulseSeqSyncGet
+        Returns the configuration of the pulse sequence synchronization feature in the Advanced section of the Bias Spectroscopy module.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed) synchronized with the individual stages of the bias spectroscopy measurement.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        - Pulse Sequence Nr. (unsigned int16) is the pulse sequence number as configured in the Pulse Generation module. 0 means no change
+        - Nr. Periods (unsigned int32) is the number of times the same pulse sequence is executed
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("BiasSpectr.PulseSeqSyncGet", [], [], ["H", "I"])
 
     def BiasSpectr_AltZCtrlSet(self, Alternate_Z_controller_setpoint: np.uint16, Setpoint: np.float32,
                                Settling_time_s: np.float32):
@@ -886,21 +978,24 @@ class Nanonis:
         When switched off, the Z-controller is enabled (if it was enabled before) and will take care of bringing the tip back.
         Arguments:
         - Z Offset Revert (unsigned int16) where 0 means no change, 1 means On, and 2 means Off
-        Return arguments (if Send response back flag is set to True when sending request message): - Error described in the
-         Response message>Body section
+        Return arguments (if Send response back flag is set to True when sending request message): 
+        - Error described in the Response message>Body section
         """
 
         return self.quickSend("BiasSpectr.ZOffRevertSet", [Z_Offset_Revert], ["h"], [])
 
     def BiasSpectr_ZOffRevertGet(self):
         """
+        BiasSpectr.ZOffRevertGet
         Returns the “Z Offset Revert” flag in the Advanced section of the Bias Spectroscopy module.
         When switched on, the Z Offset (which is applied at the beginning) is reverted (i.e. the position jumps back).
         When switched off, the Z-controller is enabled (if it was enabled before) and will take care of bringing the tip back.
         Arguments: None
         Return arguments (if Send response back flag is set to True when sending request message):
+        -  Z Offset Revert (unsigned int16) where 0 means Off, 1 means On
+        -- Error described in the Response message>Body section
         """
-        return self.quickSend("BiasSpectr.ZOffRevertGet", [], [], [])
+        return self.quickSend("BiasSpectr.ZOffRevertGet", [], [], ["H"])
 
     def BiasSpectr_MLSLockinPerSegSet(self, Lock_In_per_segment: np.uint32):
         """
@@ -973,14 +1068,14 @@ class Nanonis:
         Sets the bias spectroscopy multiple line segment configuration for Multi Line Segment mode.
         Up to 16 distinct line segments may be defined.  Any segments beyond the maximum allowed amount will be ignored.
         Arguments: 
-        -- Number of segments (int) indicates the number of segments configured in MLS mode. This value is also the size of the 1D arrays set afterwards
-        -- Bias start (V) (1D array float32) is the Start Bias value (V) for each line segment
-        -- Bias end (V) (1D array float32 is the End Bias value (V) for each line segment
-        -- Initial settling time (s) (1D array float32) indicates the number of seconds to wait at the beginning of each segment after the Lock-In setting is applied
-        -- Settling time (s) (1D array float32) indicates the number of seconds to wait before measuring each data point each the line segment
-        -- Integration time (s) (1D array float32) indicates the time during which the data are acquired and averaged in each segment
-        -- Steps (1D array int) indicates the number of steps to measure in each segment
-        -- Lock-In run (1D array unsigned int32) indicates if the Lock-In will run during the segment. This is true only if the global Lock-In per Segment flag is enabled. 
+        -- Number of segments (int) indicates the number of segments configured in MLS mode
+        -- Bias start (V) (1D array float32) is the Start Bias value (V) for each line segment.
+        -- Bias end (V) (1D array float32 is the End Bias value (V) for each line segment.
+        -- Initial settling time (s) (1D array float32) indicates the number of seconds to wait at the beginning of each segment after the Lock-In setting is applied. 
+        -- Settling time (s) (1D array float32) indicates the number of seconds to wait before measuring each data point each the line segment.
+        -- Integration time (s) (1D array float32) indicates the time during which the data are acquired and averaged in each segment.
+        -- Steps (1D array int) indicates the number of steps to measure in each segment.
+        -- Lock-In run (1D array unsigned int32) indicates if the Lock-In will run during the segment. This is true only if the global Lock-In per Segment flag is enabled.
         Otherwise, the Lock-In is set globally according to the flag in the Advanced section of Bias spectroscopy
         
         Return arguments (if Send response back flag is set to True when sending request message):
@@ -991,7 +1086,7 @@ class Nanonis:
         return self.quickSend("BiasSpectr.MLSValsSet",
                               [No_Of_Segments, Bias_start_V, Bias_end_V, Initial_settling_time_s, Settling_time_s,
                                Integration_time_s, Steps, Lock_In_run],
-                              ["i", "-*f", "-*f", "-*f", "-*f", "-*f", "-*i", "-*i"],
+                              ["i", "*f", "*f", "*f", "*f", "*f", "*i", "*i"],
                               [])
 
     def BiasSpectr_MLSValsGet(self):
@@ -1017,7 +1112,7 @@ class Nanonis:
         """
         return self.quickSend("BiasSpectr.MLSValsGet", [], [], ["i", "**f", "**f", "**f", "**f", "**f", "**i", "**I"])
 
-    def KelvinCtrl_CtrlOnOffSet(self, Control_OndivOff: np.uint32):
+    def KelvinCtrl_CtrlOnOffSet(self, Control_On_Off: np.uint32):
         """
         KelvinCtrl.CtrlOnOffSet
         Switches the KelvinCtrl. Controller on or off.
@@ -1029,7 +1124,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("KelvinCtrl.CtrlOnOffSet", [Control_OndivOff], ["I"], [])
+        return self.quickSend("KelvinCtrl.CtrlOnOffSet", [Control_On_Off], ["I"], [])
 
     def KelvinCtrl_CtrlOnOffGet(self):
         """
@@ -1140,7 +1235,7 @@ class Nanonis:
         """
         return self.quickSend("KelvinCtrl.ModParamsGet", [], [], ["f", "f", "f"])
 
-    def KelvinCtrl_ModOnOffSet(self, AC_mode_OndivOff: np.uint16, Modulation_OndivOff: np.uint16):
+    def KelvinCtrl_ModOnOffSet(self, AC_mode_On_Off: np.uint16, Modulation_On_Off: np.uint16):
         """
         KelvinCtrl.ModOnOffSet
         Switches the KelvinCtrl. Controller AC mode and modulation.
@@ -1153,7 +1248,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("KelvinCtrl.ModOnOffSet", [AC_mode_OndivOff, Modulation_OndivOff], ["H", "H"], [])
+        return self.quickSend("KelvinCtrl.ModOnOffSet", [AC_mode_On_Off, Modulation_On_Off], ["H", "H"], [])
 
     def KelvinCtrl_ModOnOffGet(self):
         """
@@ -1172,7 +1267,7 @@ class Nanonis:
         """
         return self.quickSend("KelvinCtrl.ModOnOffGet", [], [], ["H", "H"])
 
-    def KelvinCtrl_CtrlSignalSet(self, DemodulateddivControl_signal_index: int):
+    def KelvinCtrl_CtrlSignalSet(self, Demodulated_Control_signal_index: int):
         """
         KelvinCtrl.CtrlSignalSet
         Sets the demodulated/control signal index of the KelvinCtrl. Controller.
@@ -1184,7 +1279,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("KelvinCtrl.CtrlSignalSet", [DemodulateddivControl_signal_index], ["i"], [])
+        return self.quickSend("KelvinCtrl.CtrlSignalSet", [Demodulated_Control_signal_index], ["i"], [])
 
     def KelvinCtrl_CtrlSignalGet(self):
         """
@@ -1396,16 +1491,21 @@ class Nanonis:
         -- Number of gains (int) is the number of elements of the Gains array
         -- Gains (1D array string) returns an array of selectable gains. Each element of the array is preceded by its size in bytes
         -- Gain index (unsigned int16) is the index out of the list of gains. 
+        -- Filters size (int) is the size in bytes of the Filters array
+        -- Number of filters (int) is the number of elements of the Filters array
+        -- Filters (1D array string) returns an array of selectable filters. Each element of the array is preceded by itssize in bytes
+        -- Filter index (int) is the index out of the list of filters. 
         -- Error described in the Response message&gt;Body section
         
         """
         return self.quickSend("Current.GainsGet", [], [], ["i", "i", "*+c", "i", "i", "i", "*+c", "i"])
 
-    def Current_CalibrSet(self, Calibration: np.float64, Offset: np.float64):
+    def Current_CalibrSet(self, Gain_index:np.int32, Calibration: np.float64, Offset: np.float64):
         """
         Current.CalibrSet
         Sets the calibration and offset of the selected gain in the Current module.
         Arguments: 
+        -- Gain index (int) is the gain whose calibration and offset are set by this function. If set to -1, the default gain is the currently selected one in the Current module
         -- Calibration (float64)
         -- Offset (float64)
         
@@ -1415,13 +1515,14 @@ class Nanonis:
         
         
         """
-        return self.quickSend("Current.CalibrSet", [Calibration, Offset], ["d", "d"], [])
+        return self.quickSend("Current.CalibrSet", [Gain_index, Calibration, Offset], ["i", "d", "d"], [])
 
-    def Current_CalibrGet(self):
+    def Current_CalibrGet(self, Gain_index:np.int32):
         """
         Current.CalibrGet
         Gets the calibration and offset of the selected gain in the Current module.
-        Arguments: None
+        Arguments:
+        -- Gain index (int) is the gain whose calibration and offset are set by this function. If set to -1, the default gain is the currently selected one in the Current module
         Return arguments (if Send response back flag is set to True when sending request message):
         
         -- Calibration (float64)
@@ -1431,7 +1532,7 @@ class Nanonis:
         
         Z-Controller
         """
-        return self.quickSend("Current.CalibrGet", [], [], ["d", "d"])
+        return self.quickSend("Current.CalibrGet", [Gain_index], ["i"], ["d", "d"])
 
     def ZCtrl_ZPosSet(self, Z_position_m: np.float32):
         """
@@ -1902,7 +2003,7 @@ class Nanonis:
         """
         return self.quickSend("AutoApproach.Open", [], [], [])
 
-    def AutoApproach_OnOffSet(self, OndivOff):
+    def AutoApproach_OnOffSet(self, On_Off):
         """
         AutoApproach.OnOffSet
         Starts or stops the Z auto- approach procedure.
@@ -1914,7 +2015,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("AutoApproach.OnOffSet", [OndivOff], ["H"], [])
+        return self.quickSend("AutoApproach.OnOffSet", [On_Off], ["H"], [])
 
     def AutoApproach_OnOffGet(self):
         """
@@ -2021,10 +2122,12 @@ class Nanonis:
         -- Number of channels (int) is the number of recorded channels. It defines the size of the Channel indexes array
         -- Channel indexes (1D array int) are the indexes of recorded channels. The indexes are comprised between 0 and 23 for the 24 signals assigned in the Signals Manager.
         To get the signal name and its corresponding index in the list of the 128 available signals in the Nanonis Controller, use the <i>Signals.InSlotsGet</i> function
+        - Channels size (int) is the size in bytes of the Channels string array
+        - Channels (1D array string) returns the naames of the acquired channels in the sweep. The size of each string item comes right before it as integer 32
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("ZSpectr.ChsGet", [], [], ["i", "*i"])
+        return self.quickSend("ZSpectr.ChsGet", [], [], ["i", "*i", "i", "**c"])
 
     def ZSpectr_PropsSet(self, Backward_sweep, Number_of_points, Number_of_sweeps, Autosave, Show_save_dialog,
                          Save_all):
@@ -2058,9 +2161,6 @@ class Nanonis:
         
         -- Backward sweep (unsigned int16), where 1 means that the backward sweep is performed (forward is always measured) and 0 means that there is no backward sweep
         -- Number of points (int) is the number of points to acquire over the sweep range
-        -- Channels size (int) is the size in bytes of the Channels string array
-        -- Number of channels (int) is the number of elements of the Channels string array
-        -- Channels (1D array string) returns the names of the acquired channels in the sweep. The size of each string item comes right before it as integer 32
         -- Parameters size (int) is the size in bytes of the Parameters string array
         -- Number of parameters (int) is the number of elements of the Parameters string array
         -- Parameters (1D array string) returns the parameters of the sweep. The size of each string item comes right before it as integer 32
@@ -2073,7 +2173,7 @@ class Nanonis:
         
         """
         return self.quickSend("ZSpectr.PropsGet", [], [],
-                              ["H", "i", "i", "i", "*+c", "i", "i", "*+c", "i", "i", "*+c", "H", "H"])
+                              ["H", "i", "i", "i", "*+c", "i", "i", "*+c", "H", "H"])
 
     def ZSpectr_AdvPropsSet(self, Time_between_forward_and_backward_sweep_s, Record_final_Z, Lockin_Run, Reset_Z):
         """
@@ -2301,6 +2401,105 @@ class Nanonis:
         """
         return self.quickSend("ZSpectr.RetractSecondGet", [], [], ["i", "f", "i", "H"])
 
+    def ZSpectr_DigSyncSet(self, Digital_Sync: np.uint16):
+        """
+        ZSpectr_.DigSyncSet
+        Returns the configured TTL/pulse sequence synchronization option in the Advanced section of the Z Spectroscopy module.
+        TTL synchronization allows for controlling one high-speed digital output according to the individual stages of the Z Spectroscopy measurement.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed)synchronized with the individual stages of the Z Spectroscopy measurement.
+        Arguments: 
+        - Digital Sync. (unsigned int16) where 0 means no change, 1 is Off, 2 is TTL Sync, and 3 is Pulse Sequence
+        Return arguments (if Send response back flag is set to True when sending request message):
+        - Error described in the Response message>Body section
+        """
+        return self.quickSend("ZSpectr.DigSyncSet", [Digital_Sync],
+                              ["H"], [])
+
+    def ZSpectr_DigSyncGet(self):
+        """
+        ZSpectr.DigSyncGet
+        Returns the configured TTL/pulse sequence synchronization option in the Advanced section of the Z Spectroscopy module.
+        TTL synchronization allows for controlling one high-speed digital output according to the individual stages of the Z Spectroscopy measurement.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed)synchronized with the individual stages of the Z Spectroscopy measurement.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Digital Sync. (unsigned int16) where 0 is Off, 1 is TTL Sync, and 2 is Pulse Sequence
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("ZSpectr.DigSyncGet", [], [], ["H"])
+
+    def ZSpectr_TTLSyncSet(self, TTL_line: np.uint16, TTL_polarity: np.uint16,
+                              Time_to_on_s: np.float32, On_duration_s: np.float32):
+        """
+        ZSpectr.TTLSyncSet
+        Sets the configuration of the TTL Synchronization feature in the Advanced section of the Z Spectroscopy module.
+        TTL synchronization allows for controlling one high-speed digital output according to the individual stages of the Z Spectroscopy measurement.
+        Arguments: 
+        -- TTL line (unsigned int16) sets which digital line should be controlled. 0 means no change, 1 means HS Line 1, 2 means HS Line 2, 3 means HS Line 3, 4 means HS Line 4
+        -- TTL polarity (unsigned int16) sets the polarity of the switching action. 0 means no change, 1 means Low Active, and 2 means High Active
+        -- Time to on (s) (float32) defines the time to wait before activating the TTL line
+        -- On duration (s) (float32) defines how long the TTL line should be activated before resetting
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        """
+        return self.quickSend("ZSpectr.TTLSyncSet", [TTL_line, TTL_polarity, Time_to_on_s, On_duration_s],
+                              ["H", "H", "f", "f"], [])
+
+    def ZSpectr_TTLSyncGet(self):
+        """
+        ZSpectr.TTLSyncGet
+        Returns the configuration of the TTL Synchronization feature in the Advanced section of the Z Spectroscopy module.
+        TTL synchronization allows for controlling  one high-speed digital output according to the individual stages of the Z Spectroscopy measurement.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- TTL line (unsigned int16) indicates which digital line should be controlled. 0 means HS Line 1, 1 means HS Line 2, 2 means HS Line 3, 3 means HS Line 4
+        -- TTL polarity (unsigned int16) indicates the polarity of the switching action. 0 means Low Active, 1 means High Active
+        -- Time to on (s) (float32) indicates the time to wait before activating the TTL line
+        -- On duration (s) (float32) indicates how long the TTL line should be activated before resetting
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("ZSpectr.TTLSyncGet", [], [], ["H", "H", "f", "f"])
+
+    def ZSpectr_PulseSeqSyncSet(self, Pulse_Sequence_Nr: np.uint16, Nr_Periods: np.uint32):
+        """
+        ZSpectr.PulseSeqSyncSet
+        Sets the configuration of the pulse sequence synchronization feature in the Advanced section of the Z Spectroscopy module.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed) synchronized with the individual stages of the Z Spectroscopy measurement.
+        Arguments: 
+        - Pulse Sequence Nr. (unsigned int16) is the pulse sequence number as configured in the Pulse Generation module. 0 means no change
+        - Nr. Periods (unsigned int32) is the number of times the same pulse sequence is executed
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("ZSpectr.PulseSeqSyncSet", [Pulse_Sequence_Nr, Nr_Periods],
+                              ["H", "I"], [])
+
+    def ZSpectr_PulseSeqSyncGet(self):
+        """
+        ZSpectr.PulseSeqSyncGet
+        Returns the configuration of the pulse sequence synchronization feature in the Advanced section of the Z Spectroscopy module.
+        Pulse sequence allows running a high speed digital pulse sequence (if the Pulse Generation module is licensed) synchronized with the individual stages of the Z Spectroscopy measurement.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        - Pulse Sequence Nr. (unsigned int16) is the pulse sequence number as configured in the Pulse Generation module. 0 means no change
+        - Nr. Periods (unsigned int32) is the number of times the same pulse sequence is executed
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("ZSpectr.PulseSeqSyncGet", [], [], ["H", "I"])
+
     def Piezo_TiltSet(self, Tilt_X_deg, Tilt_Y_deg):
         """
         Piezo.TiltSet
@@ -2365,7 +2564,7 @@ class Nanonis:
         """
         return self.quickSend("Piezo.RangeGet", [], [], ["f", "f", "f"])
 
-    def Piezo_SensSet(self, Calibration_X_mdivV, Calibration_Y_mdivV, Calibration_Z_mdivV):
+    def Piezo_SensSet(self, Calibration_X_mPerV, Calibration_Y_mPerV, Calibration_Z_mPerV):
         """
         Piezo.SensSet
         Sets the piezo sensitivity (m/V) values for all 3 axes (X, Y, Z).
@@ -2381,7 +2580,7 @@ class Nanonis:
         
         
         """
-        return self.quickSend("Piezo.SensSet", [Calibration_X_mdivV, Calibration_Y_mdivV, Calibration_Z_mdivV],
+        return self.quickSend("Piezo.SensSet", [Calibration_X_mPerV, Calibration_Y_mPerV, Calibration_Z_mPerV],
                               ["f", "f", "f"], [])
 
     def Piezo_SensGet(self):
@@ -2399,7 +2598,7 @@ class Nanonis:
         """
         return self.quickSend("Piezo.SensGet", [], [], ["f", "f", "f"])
 
-    def Piezo_DriftCompSet(self, Compensation_ondivoff, Vx_mdivs, Vy_mdivs, Vz_mdivs, Sat_Lim):
+    def Piezo_DriftCompSet(self, Compensation_on_off, Vx_m_s, Vy_m_s, Vz_m_s, Sat_Lim):
         """
         Piezo.DriftCompSet
         Configures the drift compensation parameters.
@@ -2415,7 +2614,7 @@ class Nanonis:
         
         
         """
-        return self.quickSend("Piezo.DriftCompSet", [Compensation_ondivoff, Vx_mdivs, Vy_mdivs, Vz_mdivs, Sat_Lim],
+        return self.quickSend("Piezo.DriftCompSet", [Compensation_on_off, Vx_m_s, Vy_m_s, Vz_m_s, Sat_Lim],
                               ["I", "f", "f", "f", "f"], [])
 
     def Piezo_DriftCompGet(self):
@@ -2497,7 +2696,7 @@ class Nanonis:
         Scan.Action
         Starts, stops, pauses or resumes a scan.
         Arguments: 
-        -- Scan action (unsigned int16) sets which action to perform, where 0 means Start, 1 is Stop, 2 is Pause, and 3 is Resume
+        -- Scan action (unsigned int16) sets which action to perform, where 0=Start, 1=Stop, 2=Pause, 3=Resume, 4=Freeze, 5=Unfreeze, 6=Go to Center 
         -- Scan direction (unsigned int32) that if 1, scan direction is set to up. If 0, direction is down
         
         Return arguments (if Send response back flag is set to True when sending request message):
@@ -2619,7 +2818,7 @@ class Nanonis:
         return self.quickSend("Scan.BufferGet", [], [], ["i", "*i", "i", "i"])
 
     def Scan_PropsSet(self, Continuous_scan, Bouncy_scan, Autosave, Series_name,
-                      Comment):
+                      Comment, Modules_names):
         """
         Scan.PropsSet
         Configures some of the scan parameters.
@@ -2631,6 +2830,11 @@ class Nanonis:
         -- Series name (string) is base name used for the saved images
         -- Comment size (int) is the size in bytes of the Comment string
         -- Comment (string) is comment saved in the file
+         - Modules names size (int) is the size in bytes of the modules array. These are the modules whose
+        parameters are saved in the header of the files
+        - Modules names number (int) is the number of elements of the modules names array
+        - Modules names (1D array string) is an array of modules names strings, where each string comes
+        prepended by its size in bytes
         
         Return arguments (if Send response back flag is set to True when sending request message):
         
@@ -2639,8 +2843,8 @@ class Nanonis:
         
         """
         return self.quickSend("Scan.PropsSet",
-                              [Continuous_scan, Bouncy_scan, Autosave, Series_name, Comment],
-                              ["I", "I", "I", "+*c", "+*c"], [])
+                              [Continuous_scan, Bouncy_scan, Autosave, Series_name, Comment, Modules_names],
+                              ["I", "I", "I", "+*c", "+*c", "+*c"], [])
 
     def Scan_PropsGet(self):
         """
@@ -2661,7 +2865,7 @@ class Nanonis:
         """
         return self.quickSend("Scan.PropsGet", [], [], ["I", "I", "I", "i", "*-c", "i", "*-c"])
 
-    def Scan_SpeedSet(self, Forward_linear_speed_mdivs, Backward_linear_speed_mdivs, Forward_time_per_line_s,
+    def Scan_SpeedSet(self, Forward_linear_speed_m_s, Backward_linear_speed_m_s, Forward_time_per_line_s,
                       Backward_time_per_line_s, Keep_parameter_constant, Speed_ratio):
         """
         Scan.SpeedSet
@@ -2681,7 +2885,7 @@ class Nanonis:
         
         """
         return self.quickSend("Scan.SpeedSet",
-                              [Forward_linear_speed_mdivs, Backward_linear_speed_mdivs, Forward_time_per_line_s,
+                              [Forward_linear_speed_m_s, Backward_linear_speed_m_s, Forward_time_per_line_s,
                                Backward_time_per_line_s, Keep_parameter_constant, Speed_ratio],
                               ["f", "f", "f", "f", "H", "f"], [])
 
@@ -2727,6 +2931,70 @@ class Nanonis:
         return self.quickSend("Scan.FrameDataGrab", [Channel_index, Data_direction], ["I", "I"],
                               ["i", "*-c", "i", "i", "2f", "I"])
 
+    def Scan_XYPosGet(self, Wait_newest_data):
+        """
+        Scan.XYPosGet
+        Returns the values of the X and Y signals.
+        Arguments: 
+        - Wait for newest data (unsigned int32) selects whether the function returns the next available signal value or if it waits for a full period of new data. If False, this function returns a value 0 to Tap seconds after being called. If True, the function discards the first oversampled signal value received but returns the second value received. Thus, the function returns a value Tap to 2*Tap seconds after being called. It could be 0=False or 1=True
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        - X (m) (float32)
+        - Y (m) (float32) 
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("Scan.XYPosGet", [Wait_newest_data], ["I"],
+                              ["f", "f"])
+
+    def Scan_Save(self, Wait_until_saved, Timeout_ms):
+        """
+        Scan.Save
+        Saves the current scan databuffer into file. If Wait Until Saved is True, this function returns only when the data has been saved or timeout occurs (whichever occurs first).
+        Arguments: 
+        - Wait until saved (unsigned int32) means that if it is 1, this function waits for the scan data to be saved
+        - Timeout (ms) (int32) sets how many milliseconds to wait for the data to be saved. If it is set to –1, it will wait indefinitely        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        - Timed out? (unsigned int32) indicates if a timeout occurred (=1) while waiting for the data to be saved
+        --Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("Scan.Save", [Wait_until_saved, Timeout_ms], ["I", "i"],
+                              ["I"])
+
+    def Scan_BackgroundPaste(self, Wait_until_pasted, Timeout_ms):
+        """
+        Scan.BackgroundPaste
+        Pastes the current scan databuffer into the background. If Wait Until Pasted is True, this function returns only when the data has been pasted or timeout occurs (whichever occurs first).
+        Arguments: 
+        - Wait until pasted (unsigned int32) means that if it is 1, this function waits for the scan data to be pasted
+        - Timeout (ms) (int32) sets how many milliseconds to wait for the data to be pasted. If it is set to –1, it will wait indefinitely        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        - Timed out? (unsigned int32) indicates if a timeout occurred (=1) while waiting for the data to be pasted
+        --Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("Scan.BackgroundPaste", [Wait_until_pasted, Timeout_ms], ["I", "i"],
+                              ["I"])
+
+    def Scan_BackgroundDelete(self, Wait_until_deleted, Timeout_ms, Which_background):
+        """
+        Scan.BackgroundDelete
+        Deletes the data from the last pasted background or from all backgrounds. If Wait Until Deletef is True, this function
+        returns only when the data has been deleted or timeout occurs (whichever occurs first).
+        Arguments: 
+        - Wait until deleted (unsigned int32) means that if it is 1, this function waits for the scan data to be deleted
+        - Timeout (ms) (int32) sets how many milliseconds to wait for the data to be deleted. If it is set to –1, it will wait indefinitely        
+        - Which background to delete (unsigned int32) selects if the latest background is deleted (=0), or if all
+            backgrounds are deleted (=1)
+        Return arguments (if Send response back flag is set to True when sending request message):
+        - Timed out? (unsigned int32) indicates if a timeout occurred (=1) while waiting for the data to be deleted
+        --Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("Scan.BackgroundDelete", [Wait_until_deleted, Timeout_ms, Which_background], ["I", "i", "I"],
+                              ["I"])
+
     def FolMe_XYPosSet(self, X_m, Y_m, Wait_end_of_move):
         """
         FolMe.XYPosSet
@@ -2765,7 +3033,7 @@ class Nanonis:
         """
         return self.quickSend("FolMe.XYPosGet", [Wait_for_newest_data], ["I"], ["d", "d"])
 
-    def FolMe_SpeedSet(self, Speed_mdivs, Custom_speed):
+    def FolMe_SpeedSet(self, Speed_m_s, Custom_speed):
         """
         FolMe.SpeedSet
         Configures the tip speed when moving in Follow Me mode.
@@ -2778,7 +3046,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("FolMe.SpeedSet", [Speed_mdivs, Custom_speed], ["f", "I"], [])
+        return self.quickSend("FolMe.SpeedSet", [Speed_m_s, Custom_speed], ["f", "I"], [])
 
     def FolMe_SpeedGet(self):
         """
@@ -3049,7 +3317,7 @@ class Nanonis:
         """
         return self.quickSend("Pattern.ExpStart", [Pattern], ["H"], [])
 
-    def Pattern_ExpPause(self, PausedivResume):
+    def Pattern_ExpPause(self, Pause_Resume):
         """
         Pattern.ExpPause
         Pauses or resumes the selected grid experiment.
@@ -3060,7 +3328,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("Pattern.ExpPause", [PausedivResume], ["I"], [])
+        return self.quickSend("Pattern.ExpPause", [Pause_Resume], ["I"], [])
 
     def Pattern_ExpStop(self):
         """
@@ -3184,9 +3452,9 @@ class Nanonis:
         Configures a cloud of points.
         Arguments:
         -- Set active pattern (unsigned int32) defines if the pattern switches to Cloud, in case it was not Cloud already. 0 means Off, and 1 means On
-        -- Number of points (int) is the number of points in the cloud, and it defines the size of the 1D arrays for X and Y coordinates
-        -- X coordinates (m) (1D array float32) is a 1D array of the X coordinates of the points defining the cloud
-        -- Y coordinates (m) (1D array float32) is a 1D array of the Y coordinates of the points defining the cloud
+        -- Number of points (int) is the number of points in the cloud
+        -- X coordinates (m) (1D array float32) is a 1D array of the X coordinates of the points defining the cloud. Prepend the array size as int.
+        -- Y coordinates (m) (1D array float32) is a 1D array of the Y coordinates of the points defining the cloud. Prepend the array size as int.
         
         Return arguments (if Send response back flag is set to True when sending request message):
         
@@ -3195,7 +3463,7 @@ class Nanonis:
         """
         return self.quickSend("Pattern.CloudSet",
                               [Set_active_pattern, Number_of_points, X_coordinates_m, Y_coordinates_m],
-                              ["I", "i", "+*f", "+*f"], [])
+                              ["I", "i", "*f", "*f"], [])
 
     def Pattern_CloudGet(self):
         """
@@ -3211,7 +3479,7 @@ class Nanonis:
         
         
         """
-        return self.quickSend("Pattern.CloudGet", [], [], ["i", "*f", "*f"])
+        return self.quickSend("Pattern.CloudGet", [], [], ["i", "**f", "**f"])
 
     def Pattern_PropsSet(self, Selected_experiment, Basename,
                          External_VI_path, Pre_measure_delay_s, Save_scan_channels):
@@ -3281,13 +3549,13 @@ class Nanonis:
         return self.quickSend("Marks.PointDraw", [X_coordinate_m, Y_coordinate_m, Text, Color],
                               ["f", "f", "+*c", "I"], [])
 
-    def Marks_PointsDraw(self, X_coordinate_m, Y_coordinate_m, Text, Color):
+    def Marks_PointsDraw(self, nr_points, X_coordinate_m, Y_coordinate_m, Text, Color):
         """
         Marks.PointsDraw
         Draws text at the specified points of the scan frame.
         This function can be very useful to mark important locations in the scan image (i.e. the position where the Tip Shaper executed).
         Arguments: 
-        -- Number of points (int) indicates the number of points to draw. This value is also the size of the 1D arrays set afterwards
+        -- Number of points (int) indicates the number of points to draw
         -- X coordinate (m) (1D array float32) defines the X coordinates in meters of the center of the text for the points to draw
         -- Y coordinate (m) (1D array float32) defines the Y coordinates in meters of the center of the text for the points to draw
         -- Text (1D array string) sets the character/s to draw at each point. 
@@ -3299,8 +3567,8 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("Marks.PointsDraw", [X_coordinate_m, Y_coordinate_m, Text, Color],
-                              ["f", "f", "-*c", "I"], [])
+        return self.quickSend("Marks.PointsDraw", [nr_points, X_coordinate_m, Y_coordinate_m, Text, Color],
+                              ["i", "*f", "*f", "+*c", "*I"], [])
 
     def Marks_LineDraw(self, Start_point_X_coordinate_m, Start_point_Y_coordinate_m, End_point_X_coordinate_m,
                        End_point_Y_coordinate_m, Color):
@@ -3330,7 +3598,7 @@ class Nanonis:
         Marks.LinesDraw
         Draws multiple lines in the scan frame.
         Arguments: 
-        -- Number of lines (int) indicates the number of lines to draw. This value is also the size of the 1D arrays set afterwards
+        -- Number of lines (int) indicates the number of lines to draw
         -- Start point X coordinate (m) (1D array float32) defines the X coordinate in meters of the starting point of each line
         -- Start point Y coordinate (m) (1D array float32) defines the Y coordinate in meters of the starting point of each line
         -- End point X coordinate (m) (1D array float32) defines the X coordinate in meters of the end point of each line
@@ -3347,7 +3615,7 @@ class Nanonis:
         return self.quickSend("Marks.LinesDraw",
                               [Number_of_lines, Start_point_X_coordinate_m, Start_point_Y_coordinate_m,
                                End_point_X_coordinate_m, End_point_Y_coordinate_m, Color],
-                              ["i", "-*f", "-*f", "-*f", "-*f", "-*I"], [])
+                              ["i", "*f", "*f", "*f", "*f", "*I"], [])
 
     def Marks_PointsErase(self, Point_index):
         """
@@ -3379,7 +3647,7 @@ class Nanonis:
         """
         return self.quickSend("Marks.LinesErase", [Line_index], ["i"], [])
 
-    def Marks_PointsVisibleSet(self, Point_index, Showdivhide):
+    def Marks_PointsVisibleSet(self, Point_index, Show_hide):
         """
         Marks.PointsVisibleSet
         Show or hide the point specified by the index parameter.
@@ -3394,9 +3662,9 @@ class Nanonis:
         
         
         """
-        return self.quickSend("Marks.PointsVisibleSet", [Point_index, Showdivhide], ["i", "H"], [])
+        return self.quickSend("Marks.PointsVisibleSet", [Point_index, Show_hide], ["i", "H"], [])
 
-    def Marks_LinesVisibleSet(self, Line_index, Showdivhide):
+    def Marks_LinesVisibleSet(self, Line_index, Show_hide):
         """
         Marks.LinesVisibleSet
         Show or hide the line specified by the index parameter.
@@ -3410,7 +3678,7 @@ class Nanonis:
         
         
         """
-        return self.quickSend("Marks.LinesVisibleSet", [Line_index, Showdivhide], ["i", "H"], [])
+        return self.quickSend("Marks.LinesVisibleSet", [Line_index, Show_hide], ["i", "H"], [])
 
     def Marks_PointsGet(self):
         """
@@ -3432,7 +3700,7 @@ class Nanonis:
         
         
         """
-        return self.quickSend("Marks.PointsGet", [], [], ["i", "*f", "*f", "i", "*+c", "*I", "*I"])
+        return self.quickSend("Marks.PointsGet", [], [], ["i", "**f", "**f", "i", "**c", "**I", "**I"])
 
     def Marks_LinesGet(self):
         """
@@ -3452,24 +3720,20 @@ class Nanonis:
         
         Tip Shaper
         """
-        return self.quickSend("Marks.LinesGet", [], [], ["i", "*f", "*f", "*f", "*f", "*I", "*I"])
+        return self.quickSend("Marks.LinesGet", [], [], ["i", "**f", "**f", "**f", "**f", "**I", "**I"])
 
-    def TipShaper_Start(self, Wait_until_finished, Timeout_ms):
+    def MPass_Activate(self, On_Off):
         """
-        TipShaper.Start
-        Starts the tip shaper procedure.
+        MPass.Activate
+        Activates Multi-Pass in the Scan Control module.
         Arguments:
-        -- Wait until finished (unsigned int32) defines if this function waits (1_True) until the Tip Shaper procedure stops.
-        -- Timeout (ms) (int) sets the number of milliseconds to wait if Wait until Finished is set to True. 
-        A value equal to -1 means waiting forever.
-        
+
+        - On/Off(unsigned int32) defines if this function activates (1=On) Multi-Pass in the Scan Control module
+
         Return arguments (if Send response back flag is set to True when sending request message):
-        
-        -- Error described in the Response message&gt;Body section
-        
-        
+        - Error described in the Response message>Body section
         """
-        return self.quickSend("TipShaper.Start", [Wait_until_finished, Timeout_ms], ["I", "i"], [])
+        return self.quickSend("MPass.Activate", [On_Off], ["I"], [])
 
     def MPass_Load(self, File_Path):
         """
@@ -3501,6 +3765,23 @@ class Nanonis:
         - Error described in the Response message>Body section
         """
         return self.quickSend("MPass.Save", [File_Path], ["+*c"], [])
+
+    def TipShaper_Start(self, Wait_until_finished, Timeout_ms):
+        """
+        TipShaper.Start
+        Starts the tip shaper procedure.
+        Arguments:
+        -- Wait until finished (unsigned int32) defines if this function waits (1_True) until the Tip Shaper procedure stops.
+        -- Timeout (ms) (int) sets the number of milliseconds to wait if Wait until Finished is set to True. 
+        A value equal to -1 means waiting forever.
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        """
+        return self.quickSend("TipShaper.Start", [Wait_until_finished, Timeout_ms], ["I", "i"], [])
 
     def TipShaper_PropsSet(self, Switch_Off_Delay, Change_Bias, Bias_V, Tip_Lift_m, Lift_Time_1_s, Bias_Lift_V,
                            Bias_Settling_Time_s, Lift_Height_m, Lift_Time_2_s, End_Wait_Time_s, Restore_Feedback):
@@ -3575,7 +3856,7 @@ class Nanonis:
         return self.quickSend("Motor.StartMove", [Direction, Number_of_steps, Group, Wait_until_finished],
                               ["I", "H", "I", "I"], [])
 
-    def Motor_StartClosedLoop(self, Absolutedivrelative, Target_Xm, Target_Ym, Target_Zm, Wait_until_finished):
+    def Motor_StartClosedLoop(self, Absolute_relative, Target_Xm, Target_Ym, Target_Zm, Wait_until_finished):
         """
         Motor.StartClosedLoop
         Moves the coarse positioning device (motor, piezo actuator…) in closed loop. This is not supported by all motor control modules.
@@ -3594,7 +3875,7 @@ class Nanonis:
         <font size_"24">
         """
         return self.quickSend("Motor.StartClosedLoop",
-                              [Absolutedivrelative, Target_Xm, Target_Ym, Target_Zm, Wait_until_finished],
+                              [Absolute_relative, Target_Xm, Target_Ym, Target_Zm, Wait_until_finished],
                               ["I", "d", "d", "d", "I"], [])
 
     def Motor_StopMove(self):
@@ -3686,7 +3967,7 @@ class Nanonis:
         """
         return self.quickSend("Motor.FreqAmpSet", [Frequency_Hz, Amplitude_V, Axis], ["f", "f", "H"], [])
 
-    def GenSwp_AcqChsSet(self, Channel_indexes):
+    def GenSwp_AcqChsSet(self, Channel_indexes: list, Channel_names: list):
         """
         GenSwp.AcqChsSet
         Sets the list of recorded channels of the Generic Sweeper.
@@ -3694,12 +3975,15 @@ class Nanonis:
         -- Number of channels (int) is the number of recorded channels. It defines the size of the Channel indexes array
         -- Channel indexes (1D array int) are the indexes of recorded channels. The indexes correspond to the list of Measurement in the Nanonis software.
         To get the Measurements  names use the <i>Signals.MeasNamesGet </i>function
+        --Channel names size (int) is the size in bytes of the channel names array. These are the names of the recorded channels
+        -- Channel names number (int) is the number of elements of the channel names array
+        -- Channel names (1D array string) is an array of channel names strings, where each string comes prepended by its size in bytes
         Return arguments (if Send response back flag is set to True when sending request message):
         
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("GenSwp.AcqChsSet", [Channel_indexes], ["+*i"], [])
+        return self.quickSend("GenSwp.AcqChsSet", [Channel_indexes, Channel_names], ["+*i", "*+c"], [])
 
     def GenSwp_AcqChsGet(self):
         """
@@ -3777,7 +4061,7 @@ class Nanonis:
         """
         return self.quickSend("GenSwp.LimitsGet", [], [], ["f", "f"])
 
-    def GenSwp_PropsSet(self, Initial_Settling_time_ms, Maximum_slew_rate_unitsdivs, Number_of_steps, Period_ms,
+    def GenSwp_PropsSet(self, Initial_Settling_time_ms, Maximum_slew_rate_units_s, Number_of_steps, Period_ms,
                         Autosave, Save_dialog_box, Settling_time_ms):
         """
         GenSwp.PropsSet
@@ -3797,7 +4081,7 @@ class Nanonis:
         
         """
         return self.quickSend("GenSwp.PropsSet",
-                              [Initial_Settling_time_ms, Maximum_slew_rate_unitsdivs, Number_of_steps, Period_ms,
+                              [Initial_Settling_time_ms, Maximum_slew_rate_units_s, Number_of_steps, Period_ms,
                                Autosave, Save_dialog_box, Settling_time_ms], ["f", "f", "i", "H", "i", "i", "f"], [])
 
     def GenSwp_PropsGet(self):
@@ -3819,7 +4103,7 @@ class Nanonis:
         """
         return self.quickSend("GenSwp.PropsGet", [], [], ["f", "f", "i", "H", "I", "I", "f"])
 
-    def GenSwp_Start(self, Get_data, Sweep_direction, Save_base_name, Reset_signal):
+    def GenSwp_Start(self, Get_data, Sweep_direction, Save_base_name, Reset_signal, Z_Controller):
         """
         GenSwp.Start
         Starts the sweep in the Generic Sweeper.
@@ -3829,6 +4113,7 @@ class Nanonis:
         -- Save base name string size (int) defines the number of characters of the Save base name string
         -- Save base name (string) is the basename used by the saved files. If empty string, there is no change
         -- Reset signal (unsigned int32) where 0_Off, 1_On
+        -- Z-Controller (unsigned int16) where 0=no change, 1=turn off, 2=don’t turn off
         
         Return arguments (if Send response back flag is set to True when sending request message):
         
@@ -3842,8 +4127,8 @@ class Nanonis:
         
         """
         return self.quickSend("GenSwp.Start",
-                              [Get_data, Sweep_direction, Save_base_name, Reset_signal],
-                              ["I", "I", "+*c", "I"], ["i", "i", "*+c", "i", "i", "2f"])
+                              [Get_data, Sweep_direction, Save_base_name, Reset_signal, Z_Controller],
+                              ["I", "I", "+*c", "I", "H"], ["i", "i", "*+c", "i", "i", "2f"])
 
     def GenSwp_Stop(self):
         """
@@ -3866,11 +4151,10 @@ class Nanonis:
         
         -- Error described in the Response message&gt;Body section
         
-        Generic PI Controller
         """
         return self.quickSend("GenSwp.Open", [], [], [])
 
-    def HSSwp_AcqChsSet(self, Channel_Indexes):
+    def HSSwp_AcqChsSet(self, Channel_Indexes:list):
         """
         HSSwp.AcqChsSet
         Sets the list of recorded channels of the High-Speed Sweeper.
@@ -3908,7 +4192,7 @@ class Nanonis:
         - Available Channels indexes (1D array int) are the indexes of channels available for acquisition.
         - Error described in the Response message>Body section
         """
-        return self.quickSend("HSSwp.AcqChsGet", [], [], ["i", "*+i", "i", "i", "*+c", "i", "*+i"])
+        return self.quickSend("HSSwp.AcqChsGet", [], [], ["i", "*I", "i", "i", "*+c", "i", "*i"])
 
     def HSSwp_AutoReverseSet(self, OnOff, Condition, Signal, Threshold, LinkToOne, Condition2, Signal2, Threshold2):
         """
@@ -4087,7 +4371,7 @@ class Nanonis:
         - Error described in the Response message>Body section
 
         """
-        return self.quickSend("HSSwp.SaveBasenameGet", [], [], ["i", "*+c"])
+        return self.quickSend("HSSwp.SaveBasenameGet", [], [], ["i", "*-c"])
 
     def HSSwp_SaveDataSet(self, SaveData):
         """
@@ -4154,7 +4438,7 @@ class Nanonis:
         prepended by its size in bytes.
         - Error described in the Response message>Body section
         """
-        return self.quickSend("HSSwp.SaveOptionsGet", [], [], ["i", "*+c", "i", "i", "*+c"])
+        return self.quickSend("HSSwp.SaveOptionsGet", [], [], ["i", "*-c", "i", "i", "*+c"])
 
     def HSSwp_Start(self, Wait_Until_Done, Timeout):
         """
@@ -4311,7 +4595,7 @@ class Nanonis:
         - Error described in the Response message>Body section
 
         """
-        return self.quickSend("HSSwp.SwpChTimingSet", [], [], ["i"])
+        return self.quickSend("HSSwp.SwpChNumPtsGet", [], [], ["i"])
 
     def HSSwp_SwpChTimingSet(self, Initial_Settling_Time, Settling_Time, Integration_Time, Max_Slew_Time):
         """
@@ -4329,7 +4613,7 @@ class Nanonis:
 
         - Error described in the Response message>Body section
         """
-        return self.quickSend("HSSwp.", [Initial_Settling_Time, Settling_Time, Integration_Time, Max_Slew_Time],
+        return self.quickSend("HSSwp.SwpChTimingSet", [Initial_Settling_Time, Settling_Time, Integration_Time, Max_Slew_Time],
                               ["f", "f", "f", "f"], [])
 
     def HSSwp_SwpChTimingGet(self):
@@ -4350,34 +4634,34 @@ class Nanonis:
         """
         return self.quickSend("HSSwp.SwpChTimingGet", [], [], ["f", "f", "f", "f"])
 
-    def HSSwp_SwpChBwdSwpSet(self, Bwd_Sweep):
+    def HSSwp_SwpChBwdSwSet(self, Bwd_Sweep):
         """
-        HSSwp.SwpChBwdSwpSet
+        HSSwp.SwpChBwdSwSet
         Enables or disables the backward sweep for the sweep channel in the High-Speed Sweeper.
 
         Arguments:
 
-        - Bwd Sweep (int) defines if the backward sweep is enabled, where 0=Off, 1=On
+        - Bwd Sweep (unsigned int32) defines if the backward sweep is enabled, where 0=Off, 1=On
 
         Return arguments (if Send response back flag is set to True when sending request message):
 
         - Error described in the Response message>Body section
         """
-        return self.quickSend("HSSwp.SwpChBwdSwpSet", [Bwd_Sweep], ["i"], [])
+        return self.quickSend("HSSwp.SwpChBwdSwSet", [Bwd_Sweep], ["I"], [])
 
-    def HSSwp_SwpChBwdSwpGet(self):
+    def HSSwp_SwpChBwdSwGet(self):
         """
-        HSSwp.SwpChBwdSwpGet
+        HSSwp.SwpChBwdSwGet
         Returns if the backward sweep of the sweep channel in the High-Speed Sweeper is enabled or not.
 
         Arguments: None
 
         Return arguments (if Send response back flag is set to True when sending request message):
 
-        - Bwd Sweep (int) specifies if the backward sweep is enabled, where 0=Off, 1=On
+        - Bwd Sweep (unsigned int32) specifies if the backward sweep is enabled, where 0=Off, 1=On
         - Error described in the Response message>Body section
         """
-        return self.quickSend("HSSwp.SwpChBwdSwpGet", [], [], ["i"])
+        return self.quickSend("HSSwp.SwpChBwdSwGet", [], [], ["I"])
 
     def HSSwp_SwpChBwdDelaySet(self, Bwd_Delay):
         """
@@ -4391,7 +4675,7 @@ class Nanonis:
 
         - Error described in the Response message>Body section
         """
-        return self.quickSend("HSSwp.SwpChBwdDelaySe", [Bwd_Delay], ["f"], [])
+        return self.quickSend("HSSwp.SwpChBwdDelaySet", [Bwd_Delay], ["f"], [])
 
     def HSSwp_SwpChBwdDelayGet(self):
         """
@@ -6780,7 +7064,7 @@ class Nanonis:
         """
         return self.quickSend("Script.ChsGet", [Acquire_buffer], ["H"], ["i", "*i"])
 
-    def Script_ChsSet(self, Acquire_buffer, Number_of_channels, Channel_indexes):
+    def Script_ChsSet(self, Acquire_buffer, Channel_indexes):
         """
         Script.ChsSet
         Sets the list of acquired channels in the Script module.
@@ -6795,7 +7079,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("Script.ChsSet", [Acquire_buffer, Number_of_channels, Channel_indexes], ["H", "i", "-*i"],
+        return self.quickSend("Script.ChsSet", [Acquire_buffer, Channel_indexes], ["H", "+*i"],
                               [])
 
     def Script_DataGet(self, Acquire_buffer, Sweep_number):
@@ -7199,42 +7483,6 @@ class Nanonis:
         """
         return self.quickSend("Signals.NamesGet", [], [], ["i", "i", "*+c"])
 
-    def Signals_InSlotSet(self, Slot, RT_signal_index):
-        """
-        Signals.InSlotSet
-        Assigns one of the 128 available signals to one of the 24 slots of the Signals Manager.
-        Arguments: 
-        -- Slot (int) is the index of the slot in the Signals Manager where one of the 128 RT signals is assigned, so that index could be any value from 0 to 23
-        -- RT signal index (int) is the index of the RT signal to assign to the selected slot, so that index could be any value from 0 to 127
-        
-        Return arguments (if Send response back flag is set to True when sending request message):
-        
-        -- Error described in the Response message&gt;Body section
-        
-        
-        """
-        return self.quickSend("Signals.InSlotSet", [Slot, RT_signal_index], ["i", "i"], [])
-
-    def Signals_InSlotsGet(self):
-        """
-        Signals.InSlotsGet
-        Returns a list of the signals names and indexes of the 24 signals assigned to the slots of the Signals Manager.
-        The 24 signals are selected in the Signals Manager out of the 128 signals available in the software, and they are used in the list of available signals to display in graphs and other modules.
-        The index of every signal corresponds to the index in the list of 128 signals (0-127). The latter can be returned by the <i>Signals.NamesGet</i> function.
-        Arguments: None
-        Return arguments (if Send response back flag is set to True when sending request message):
-        
-        -- Signals names size (int) is the size in bytes of the signals names array
-        -- Number of Signals (int) is the number of elements of the signals names array
-        -- Signals names (1D array string) returns an array of signals names. Each element of the array is preceded by its size in bytes
-        -- Signals indexes size (int) is the size of the signals indexes array
-        -- Signals indexes (1D array int) returns an array of signals indexes
-        -- Error described in the Response message&gt;Body section
-        
-        
-        """
-        return self.quickSend("Signals.InSlotsGet", [], [], ["i", "i", "*+c", "i", "*i"])
-
     def Signals_CalibrGet(self, Signal_index):
         """
         Signals.CalibrGet
@@ -7339,7 +7587,7 @@ class Nanonis:
         -- Error described in the Response message&gt;Body section
         
         """
-        return self.quickSend("Signals.AddRTGet", [], [], ["i", "*+c", "*-c", "*-c"])
+        return self.quickSend("Signals.AddRTGet", [], [], ["i", "i", "*+c", "i", "*-c", "i", "*-c"])
 
     def Signals_AddRTSet(self, Additional_RT_signal_1, Additional_RT_signal_2):
         """
@@ -9543,10 +9791,401 @@ class Nanonis:
         """
         return self.quickSend("Util.RTOversamplSet", [RT_oversampling], ["i"], [])
 
+    def APRFGen_RFOutOnOffSet(self, RF_Output: np.uint32):
+        """
+        APRFGen.RFOutOnOffSet
+        Switches the RF Output On or Off.
+        Arguments: 
+        -- RF Output (unsigned int32) switches the RF Output Off (_0) or On (_1)
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        
+        """
+        return self.quickSend("APRFGen.RFOutOnOffSet", [RF_Output], ["I"], [])
+
+    def APRFGen_RFOutOnOffGet(self):
+        """
+        APRFGen.RFOutOnOffGet
+        Returns the status of the RF Output. 
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- RF Output (unsigned int32) indicates if the RF Output is Off (_0) or On (_1)
+        -- Error described in the Response message&gt;Body section
+        
+        
+        """
+        return self.quickSend("APRFGen.RFOutOnOffGet", [], [], ["I"])
+
+    def APRFGen_FreqSet(self, Force_RF_On: np.uint32, Frequency_Hz: np.float32):
+        """
+        APRFGen.FreqSet
+        Sets the Frequency value in the CW mode.
+        Arguments: 
+        -- Force RF Output On? (unsigned int32) defines if the RF Output is switched on (_1), in case it is off, or not (_0) before setting the Frequency
+        -- Frequency (Hz) (float32)
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.FreqSet", [Force_RF_On, Frequency_Hz], ["I", "f"], [])
+
+    def APRFGen_FreqGet(self):
+        """
+        APRFGen.FreqGet
+        Returns the Frequency value set in the CW mode.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Frequency (Hz) (float32)
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.FreqGet", [], [], ["f"])
+
+    def APRFGen_PowerSet(self, Force_RF_On: np.uint32, Power_dBm: np.float32):
+        """
+        APRFGen.PowerSet
+        Sets the Power value in the CW mode.
+        Arguments: 
+        -- Force RF Output On? (unsigned int32) defines if the RF Output is switched on (_1), in case it is off, or not (_0) before setting the Power
+        -- Power (dBm) (float32)
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.PowerSet", [Force_RF_On, Power_dBm], ["I", "f"], [])
+
+    def APRFGen_PowerGet(self):
+        """
+        APRFGen.PowerGet
+        Returns the Power value set in the CW mode.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Power (dBm) (float32)
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.PowerGet", [], [], ["f"])
+
+    def APRFGen_SwpStop(self):
+        """
+        APRFGen.SwpStop
+        Stops the running Sweep (Frequency, Power, or List) and switches the mode to CW.
+        Arguments: 
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.SwpStop", [], [], [])
+
+    def APRFGen_FreqSwpStart(self, Direction: np.uint32):
+        """
+        APRFGen.FreqSwpStart
+        Starts a Frequency Sweep.
+        Arguments: 
+        -- Direction (unsigned int32) defines the sweep direction Up (_0) or Down (_1)
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        
+        """
+        return self.quickSend("APRFGen.FreqSwpStart", [Direction], ["I"], [])
+
+    def APRFGen_FreqSwpLimitsSet(self, Lower_limit: np.float32, Upper_limit: np.float32):
+        """
+        APRFGen.FreqSwpLimitsSet
+        Sets the limits of the Frequency Sweep in the RF Generator.
+        Arguments: 
+        -- Lower limit (float32) defines the lower limit of the sweep range
+        -- Upper limit (float32) defines the upper limit of the sweep range
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.FreqSwpLimitsSet", [Lower_limit, Upper_limit], ["f", "f"], [])
+
+    def APRFGen_FreqSwpLimitsGet(self):
+        """
+        APRFGen.FreqSwpLimitsGet
+        Returns the limits of the Frequency Sweep in the RF Generator.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Lower limit (float32) defines the lower limit of the sweep range
+        -- Upper limit (float32) defines the upper limit of the sweep range
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.FreqSwpLimitsGet", [], [], ["f", "f"])
+
+    def APRFGen_FreqSwpPropsSet(self, Mode: np.uint16, Dwell_s: np.float32, Repetitions: np.float32,
+                         Infinite: np.uint16, Points: np.int32, Off_s:np.float32, AutoOff:np.uint16):
+        """
+        APRFGen.FreqSwpPropsSet
+        Sets the configuration of the Frequency Sweep in the RF Generator.
+        Arguments: 
+        -- Sweep mode (unsigned int16) where 0 points means no change, 1 is Linear, and 2 is Log
+        -- Dwell time (s) (float32) is the amount of time in seconds the sweep plays each sweep point with the RF On
+        -- Repetitions (float32) defines a finite number of sweep repetitions being played after triggering a sweep
+        -- Infinite (unsigned int16) sets an infinite number of repetitions, where 0_no change, 1_On, 2_Off
+        -- Points (int32) sets the number of sweep points
+        -- Off time (s) (float32)  is the amount of time in seconds the sweep pauses with the RF Off before playing the next point
+        -- Auto Off Time (unsigned int16) Enables or disables automatic Off (delay) Time selection. In automatic mode, Off Time is configured such that the transients between sweep points are blanked and do not appear at the RF output, where 0_no change, 1_On, 2_Off
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        """
+        return self.quickSend("APRFGen.FreqSwpPropsSet", [Mode, Dwell_s, Repetitions, Infinite, Points, Off_s, AutoOff],
+                              ["H", "f", "f", "H", "i", "f", "H"], [])
+
+    def APRFGen_FreqSwpPropsGet(self):
+        """
+        APRFGen.FreqSwpPropsGet
+        Returns the configuration of the Frequency Sweep in the RF Generator.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Sweep mode (unsigned int16) where 1 is Linear, and 2 is Log
+        -- Dwell time (s) (float32) is the amount of time in seconds the sweep plays each sweep point with the RF On
+        -- Repetitions (float32) defines a finite number of sweep repetitions being played after triggering a sweep
+        -- Infinite (unsigned int16) sets an infinite number of repetitions, where 1_On, 2_Off
+        -- Points (int32) sets the number of sweep points
+        -- Off time (s) (float32)  is the amount of time in seconds the sweep pauses with the RF Off before playing the next point
+        -- Auto Off Time (unsigned int16) Enables or disables automatic Off (delay) Time selection. In automatic mode, Off Time is configured such that the transients between sweep points are blanked and do not appear at the RF output, where 1_On, 2_Off
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.FreqSwpPropsGet", [], [],
+                              ["H", "f", "f", "H", "i", "f", "H"])
+
+    def APRFGen_PowerSwpStart(self, Direction: np.uint32):
+        """
+        APRFGen.PowerSwpStart
+        Starts a Power Sweep.
+        Arguments: 
+        -- Direction (unsigned int32) defines the sweep direction Up (_0) or Down (_1)
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        
+        """
+        return self.quickSend("APRFGen.PowerSwpStart", [Direction], ["I"], [])
+
+    def APRFGen_PowerSwpLimitsSet(self, Lower_limit: np.float32, Upper_limit: np.float32):
+        """
+        APRFGen.PowerSwpLimitsSet
+        Sets the limits of the Power Sweep in the RF Generator.
+        Arguments: 
+        -- Lower limit (float32) defines the lower limit of the sweep range
+        -- Upper limit (float32) defines the upper limit of the sweep range
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.PowerSwpLimitsSet", [Lower_limit, Upper_limit], ["f", "f"], [])
+
+    def APRFGen_PowerSwpLimitsGet(self):
+        """
+        APRFGen.PowerSwpLimitsGet
+        Returns the limits of the Power Sweep in the RF Generator.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Lower limit (float32) defines the lower limit of the sweep range
+        -- Upper limit (float32) defines the upper limit of the sweep range
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.PowerSwpLimitsGet", [], [], ["f", "f"])
+
+    def APRFGen_PowerSwpPropsSet(self, Dwell_s: np.float32, Repetitions: np.float32,
+                         Infinite: np.uint16, Points: np.int32, Off_s:np.float32, AutoOff:np.uint16):
+        """
+        APRFGen.PowerSwpPropsSet
+        Sets the configuration of the Power Sweep in the RF Generator.
+        Arguments: 
+        -- Dwell time (s) (float32) is the amount of time in seconds the sweep plays each sweep point with the RF On
+        -- Repetitions (float32) defines a finite number of sweep repetitions being played after triggering a sweep
+        -- Infinite (unsigned int16) sets an infinite number of repetitions, where 0_no change, 1_On, 2_Off
+        -- Points (int32) sets the number of sweep points
+        -- Off time (s) (float32)  is the amount of time in seconds the sweep pauses with the RF Off before playing the next point
+        -- Auto Off Time (unsigned int16) Enables or disables automatic Off (delay) Time selection. In automatic mode, Off Time is configured such that the transients between sweep points are blanked and do not appear at the RF output, where 0_no change, 1_On, 2_Off
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        """
+        return self.quickSend("APRFGen.PowerSwpPropsSet", [Dwell_s, Repetitions, Infinite, Points, Off_s, AutoOff],
+                              ["f", "f", "H", "i", "f", "H"], [])
+
+    def APRFGen_PowerSwpPropsGet(self):
+        """
+        APRFGen.PowerSwpPropsGet
+        Returns the configuration of the Power Sweep in the RF Generator.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Dwell time (s) (float32) is the amount of time in seconds the sweep plays each sweep point with the RF On
+        -- Repetitions (float32) defines a finite number of sweep repetitions being played after triggering a sweep
+        -- Infinite (unsigned int16) sets an infinite number of repetitions, where 1_On, 2_Off
+        -- Points (int32) sets the number of sweep points
+        -- Off time (s) (float32)  is the amount of time in seconds the sweep pauses with the RF Off before playing the next point
+        -- Auto Off Time (unsigned int16) Enables or disables automatic Off (delay) Time selection. In automatic mode, Off Time is configured such that the transients between sweep points are blanked and do not appear at the RF output, where 1_On, 2_Off
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.PowerSwpPropsGet", [], [],
+                              ["f", "f", "H", "i", "f", "H"])
+
+    def APRFGen_ListSwpStart(self, Direction: np.uint32):
+        """
+        APRFGen.ListSwpStart
+        Starts a List Sweep.
+        Arguments: 
+        -- Direction (unsigned int32) defines the sweep direction Up (_0) or Down (_1)
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        
+        """
+        return self.quickSend("APRFGen.ListSwpStart", [Direction], ["I"], [])
+
+    def APRFGen_ListSwpPropsSet(self, Signal:np.uint16, Values,
+                         Infinite: np.uint16, Repetitions: np.float32, AutoOff:np.uint16):
+        """
+        APRFGen.ListSwpPropsSet
+        Sets the configuration of the List Sweep in the RF Generator.
+        Arguments: 
+        -- Signal to Sweep (unsigned int16) is the parameter to sweep. Frequency is 1, Power is 2, Frequency & Power is 3. 0 means no change.
+        -- Sweep Values Rows (int) defines the number of rows of the Sweep Values array
+        -- Sweep Values Columns (int) defines the number of columns of the Sweep Values array. This should be set to 4.
+        -- Sweep Values (2D array float32) defines the values applied at each sweep point, where each row contains a Frequency value (Hz), Power value (dBm), Dwell time (s), and Off time (s).
+        -- Infinite (unsigned int16) sets an infinite number of repetitions, where 0_no change, 1_On, 2_Off
+        -- Repetitions (float32) defines a finite number of sweep repetitions being played after triggering a sweep
+        -- Auto Off Time (unsigned int16) Enables or disables automatic Off (delay) Time selection. In automatic mode, Off Time is configured such that the transients between sweep points are blanked and do not appear at the RF output, where 0_no change, 1_On, 2_Off
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        """
+        return self.quickSend("APRFGen.ListSwpPropsSet", [Signal, Values, Infinite, Repetitions, AutoOff],
+                              ["H", "2f", "H", "f", "H"], [])
+
+    def APRFGen_ListSwpPropsGet(self):
+        """
+        APRFGen.ListSwpPropsGet
+        Returns the configuration of the List Sweep in the RF Generator.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Signal to Sweep (unsigned int16) is the parameter to sweep. Frequency is 1, Power is 2, Frequency & Power is 3.
+        -- Sweep Values Rows (int) is the number of rows of the Sweep Values array
+        -- Sweep Values Columns (int) is the number of columns of the Sweep Values array.
+        -- Sweep Values (2D array float32) are the values applied at each sweep point, where each row contains a Frequency value (Hz), Power value (dBm), Dwell time (s), and Off time (s).
+        -- Infinite (unsigned int16) sets an infinite number of repetitions, where 1_On, 2_Off
+        -- Repetitions (float32) defines a finite number of sweep repetitions being played after triggering a sweep
+        -- Auto Off Time (unsigned int16) Enables or disables automatic Off (delay) Time selection. In automatic mode, Off Time is configured such that the transients between sweep points are blanked and do not appear at the RF output, where 1_On, 2_Off
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.ListSwpPropsGet", [], [],
+                              ["H", "i", "i", "2f", "H", "f", "H"])
+
+    def APRFGen_TrigRearm(self):
+        """
+        APRFGen.TrigRearm
+        Rearms the trigger.
+        Arguments: 
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.TrigRearm", [], [], [])
+
+    def APRFGen_TrigPropsSet(self, Edge: np.uint16, Delay_s: np.float32,
+                         Source: np.uint16, Type: np.uint16, Event_Count:np.uint16, Mode:np.uint16):
+        """
+        APRFGen.TrigPropsSet
+        Sets the configuration of the triggering in the RF Generator.
+        Arguments: 
+        -- Edge (unsigned int16) is the polarity of the external trigger, where 0_no change, 1_Rising, 2_Falling
+        -- Delay (s) (float32) is the amount of time in seconds to delay the response to the external trigger
+        -- Source (unsigned int16) where 0_no change, 1_Off (Immediate), 2_On (External Trigger)
+        -- Type (unsigned int16) where 0_no change, 1_Complete Sweep, 2_Gated, 3_Single Point
+                Complete Sweep: the sweep is fully executed when receiving the trigger
+                Gated: the sweep is only executed while the trigger signal is high (rising) or low (falling). This only works with an external trigger source
+                Single Point: one point of the sweep is executed when receiving the trigger
+        -- Event Count (unsigned int16) where
+                Setting the value to N means that only every Nth trigger event will be considered. 
+                Setting it to one means will use every trigger event that does not occur during a running sweep.
+        -- Mode (unsigned int16) where 0_no change, 1_Single Shot, 2_Continuous
+        
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Error described in the Response message&gt;Body section
+        
+        
+        """
+        return self.quickSend("APRFGen.TrigPropsSet", [Edge, Delay_s, Source, Type, Event_Count, Mode],
+                              ["H", "f", "H", "H", "H", "H"], [])
+
+    def APRFGen_TrigPropsGet(self):
+        """
+        APRFGen.TrigPropsGet
+        Returns the configuration of the triggering in the RF Generator.
+        Arguments: None
+        Return arguments (if Send response back flag is set to True when sending request message):
+        
+        -- Edge (unsigned int16) is the polarity of the external trigger, where 1_Rising, 2_Falling
+        -- Delay (s) (float32) is the amount of time in seconds to delay the response to the external trigger
+        -- Source (unsigned int16) where 1_Off (Immediate), 2_On (External Trigger)
+        -- Type (unsigned int16) where 1_Complete Sweep, 2_Gated, 3_Single Point
+                Complete Sweep: the sweep is fully executed when receiving the trigger
+                Gated: the sweep is only executed while the trigger signal is high (rising) or low (falling). This only works with an external trigger source
+                Single Point: one point of the sweep is executed when receiving the trigger
+        -- Event Count (unsigned int16) where
+                Setting the value to N means that only every Nth trigger event will be considered. 
+                Setting it to one means will use every trigger event that does not occur during a running sweep.
+        -- Mode (unsigned int16) where 1_Single Shot, 2_Continuous
+        -- Error described in the Response message&gt;Body section
+        
+        """
+        return self.quickSend("APRFGen.TrigPropsGet", [], [],
+                              ["H", "f", "H", "H", "H", "H"])
+
 """
-Nano = Nanonis(6501, "10.0.0.37")
-# 192.168.8.175
-Nano.returnDebugInfo(0)
 """
 
 
