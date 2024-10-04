@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nanonis_spm"
-version = "1.0.1"
+version = "1.0.2"
 authors = [
   { name="Samuel O'Neill", email="samuel.oneill@specs-zurich.com" },
 ]
@@ -18,6 +18,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
-[tool.setuptools.packages]
-# Include all Python packages under 'Examples'
-find = {where = ["Examples"]}
+[tool.hatch.build.targets.wheel.force-include]
+"nanonis_spm_examples" = "/nanonis_spm_examples"
+
+[tool.hatch.build.targets.sdist.force-include]
+"nanonis_spm_examples" = "/nanonis_spm_examples"
+
