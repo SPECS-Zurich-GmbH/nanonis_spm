@@ -52,6 +52,9 @@ We hereby ensure that the arguments are of the correct size.
 
 ## Change Log
 
+### 1.0.9
+Added missing argument to TCPLog_ChsSet.
+Fixed data types from f to d in Osci1T_TrigSet function.
 ### 1.0.8
 Added missing argument to Motor_StartClosedLoop function.
 ### 1.0.7
