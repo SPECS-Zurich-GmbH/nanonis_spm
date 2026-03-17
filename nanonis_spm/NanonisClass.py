@@ -252,6 +252,41 @@ class Nanonis:
         Variables = []
         universalLength = 0
         for ResponseType in ResponseTypes:
+            # Handle +*X and -*X format strings (self-contained prepended arrays/strings)
+            if (len(ResponseType) >= 3
+                    and ResponseType[0] in ('+', '-')
+                    and ResponseType[1] == '*'):
+                elem_type = ResponseType[2]
+                if ResponseType[0] == '+':
+                    if elem_type == 'c':
+                        # Self-contained prepended string: 4-byte length + string data
+                        str_len = struct.unpack('>i', Response[counter:counter+4])[0]
+                        counter += 4
+                        string_val = Response[counter:counter+str_len].decode('utf-8', errors='replace')
+                        counter += str_len
+                        Variables.append(string_val)
+                    else:
+                        # Self-contained prepended array: 4-byte count + element data
+                        arr_len = struct.unpack('>i', Response[counter:counter+4])[0]
+                        counter += 4
+                        elem_size = struct.calcsize('>' + elem_type)
+                        result = []
+                        for i in range(arr_len):
+                            val = struct.unpack('>' + elem_type, Response[counter:counter+elem_size])
+                            result.append(val[0])
+                            counter += elem_size
+                        Variables.append(result)
+                else:  # '-'
+                    # Non-prepended array: length from previous variable
+                    arr_len = Variables[-1]
+                    elem_size = struct.calcsize('>' + elem_type)
+                    result = []
+                    for i in range(arr_len):
+                        val = struct.unpack('>' + elem_type, Response[counter:counter+elem_size])
+                        result.append(val[0])
+                        counter += elem_size
+                    Variables.append(result)
+                continue
             if ResponseType[0] != '*':
                 if ResponseType[0] == '2':
                     NoOfRows = Variables[-2]  # no of rows must be directly before cols
