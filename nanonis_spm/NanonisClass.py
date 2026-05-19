@@ -9812,7 +9812,7 @@ class Nanonis:
         -- Data Y (1D array float64) is the data acquired in the Spectrum Analyzer
         -- Error described in the Response message&gt;Body section
         """
-        return self.quickSend("SpectrumAnlzr.DataGet", [Spectrum_Analyzer_instance], ["i"], ["f", "f", "i", "*f"])
+        return self.quickSend("SpectrumAnlzr.DataGet", [Spectrum_Analyzer_instance], ["i"], ["d", "d", "i", "*d"])
 
     def FunGen1Ch_Start(self, Periods, Wait_until_finished):
         """
